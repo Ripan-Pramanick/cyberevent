@@ -1,0 +1,6 @@
+{
+  "name": "CyberEvents",
+  "description": "Comprehensive event management platform featuring interactive kanban, visual Gantt milestones, multi-currency ledger, vendor coordination, and customizable company billing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
