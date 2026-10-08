@@ -283,4 +283,4 @@ const KPICard = ({ title, value, icon }: { title: string, value: string | number
     </div>
     <span className="text-lg font-bold text-slate-900 dark:text-white truncate">{value}</span>
   </div>
-);
+); 
