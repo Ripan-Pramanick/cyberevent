@@ -16,7 +16,8 @@ import {
   LogOut,
   Sun,
   Moon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Briefcase // Added icon for Services module
 } from 'lucide-react';
 import { NavigationTab } from '../types';
 import { useEventContext } from '../context/EventContext';
@@ -84,6 +85,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Vendors', 
       icon: Store,
       badge: `${vendors.length}` 
+    },
+    // NEW: Services Module added here
+    { 
+      id: 'services' as NavigationTab, 
+      label: 'Services', 
+      icon: Briefcase,
+      badge: null 
     },
     { 
       id: 'billing' as NavigationTab, 

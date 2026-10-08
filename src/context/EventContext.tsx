@@ -11,7 +11,9 @@ import {
   TaskStatus,
   EventCategoryItem,
   CompanyProfile,
-  defaultCompanyProfile
+  defaultCompanyProfile,
+  MasterService,
+  EventServiceRelation
 } from '../types';
 import { SupabaseSyncEngine, supabase } from '../lib/supabase'; 
 
@@ -36,6 +38,8 @@ interface EventContextType {
   kanbanTasks: KanbanTask[];
   ganttTasks: GanttTask[];
   categories: EventCategoryItem[];
+  masterServices: MasterService[];
+  eventServiceRelations: EventServiceRelation[];
   isLoading: boolean;
   
   addEvent: (event: Omit<EventItem, 'id' | 'createdAt'>) => Promise<EventItem | null>;
@@ -78,6 +82,16 @@ interface EventContextType {
   updateGanttTask: (id: string, updates: Partial<GanttTask>) => Promise<void>;
   deleteGanttTask: (id: string) => Promise<void>;
 
+  // SERVICES MANAGEMENT
+  addMasterService: (service: Omit<MasterService, 'id' | 'createdAt' | 'updatedAt' | 'totalInternalCost' | 'expectedMargin'>) => Promise<MasterService | null>;
+  updateMasterService: (id: string, updates: Partial<MasterService>) => Promise<void>;
+  deleteMasterService: (id: string) => Promise<void>;
+  toggleServiceStatus: (id: string) => Promise<void>;
+  duplicateMasterService: (id: string) => Promise<MasterService | null>;
+  assignServiceToEvent: (relation: Omit<EventServiceRelation, 'id' | 'createdAt' | 'updatedAt'>) => Promise<EventServiceRelation | null>;
+  removeServiceFromEvent: (relationId: string) => Promise<void>;
+  checkCapacityConflict: (serviceId: string, startDate: string, endDate: string, excludeEventId?: string) => { hasConflict: boolean; currentUsage: number; maxCapacity: number };
+
   companyProfile: CompanyProfile;
   updateCompanyProfile: (profile: Partial<CompanyProfile>) => void;
   financialSummary: FinancialSummary;
@@ -94,6 +108,11 @@ export const EventProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
   const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>([]);
   const [ganttTasks, setGanttTasks] = useState<GanttTask[]>([]);
+  
+  // Services Module State
+  const [masterServices, setMasterServices] = useState<MasterService[]>([]);
+  const [eventServiceRelations, setEventServiceRelations] = useState<EventServiceRelation[]>([]);
+  
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(defaultCompanyProfile);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -114,7 +133,9 @@ export const EventProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           { data: dbInvoices },
           { data: dbVendorBills },
           { data: dbKanban },
-          { data: dbGantt }
+          { data: dbGantt },
+          { data: dbServices },
+          { data: dbEventServices }
         ] = await Promise.all([
           supabase.from('events').select('*').order('created_at', { ascending: false }),
           supabase.from('categories').select('*'),
@@ -123,7 +144,9 @@ export const EventProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           supabase.from('client_invoices').select('*'),
           supabase.from('vendor_bills').select('*'),
           supabase.from('kanban_tasks').select('*'),
-          supabase.from('gantt_tasks').select('*')
+          supabase.from('gantt_tasks').select('*'),
+          supabase.from('services').select('*').order('created_at', { ascending: false }),
+          supabase.from('event_services').select('*')
         ]);
 
         if (dbEvents) {
@@ -174,6 +197,60 @@ export const EventProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             ...g, eventId: g.event_id, eventTitle: g.event_title, startDate: g.start_date, endDate: g.end_date
           })));
         }
+        if (dbServices) {
+          setMasterServices(dbServices.map(s => {
+            const intCost = Number(s.labour_cost || 0) + Number(s.equipment_cost || 0) + Number(s.other_cost || 0);
+            const clientPrice = Number(s.default_client_price || 0);
+            const margin = clientPrice > 0 ? ((clientPrice - intCost) / clientPrice) * 100 : 0;
+            return {
+              id: s.id,
+              serviceCode: s.service_code,
+              serviceName: s.service_name,
+              description: s.description || '',
+              category: s.category || '',
+              serviceType: s.service_type,
+              status: s.status,
+              responsibleTeam: s.responsible_team || '',
+              teamLead: s.team_lead || '',
+              teamMembers: s.team_members || [],
+              availableCapacity: Number(s.available_capacity || 1),
+              workingHours: s.working_hours || '',
+              requiredStaff: Number(s.required_staff || 1),
+              requiredEquipment: s.required_equipment || '',
+              serviceLocation: s.service_location || '',
+              vendorId: s.vendor_id || '',
+              labourCost: Number(s.labour_cost || 0),
+              equipmentCost: Number(s.equipment_cost || 0),
+              otherCost: Number(s.other_cost || 0),
+              totalInternalCost: s.total_internal_cost !== undefined ? Number(s.total_internal_cost) : intCost,
+              defaultClientPrice: clientPrice,
+              expectedMargin: margin,
+              createdAt: s.created_at,
+              updatedAt: s.updated_at
+            };
+          }));
+        }
+        if (dbEventServices) {
+          setEventServiceRelations(dbEventServices.map(es => ({
+            id: es.id,
+            eventId: es.event_id,
+            serviceId: es.service_id,
+            serviceName: es.service_name || '',
+            serviceType: es.service_type || 'IN_HOUSE',
+            quantity: Number(es.quantity || 1),
+            assignedTeam: es.assigned_team,
+            startDate: es.start_date,
+            endDate: es.end_date,
+            internalCost: Number(es.internal_cost || 0),
+            clientPrice: Number(es.client_price || 0),
+            actualCost: Number(es.actual_cost || 0),
+            actualRevenue: Number(es.actual_revenue || 0),
+            notes: es.notes,
+            status: es.status || 'PLANNED',
+            createdAt: es.created_at,
+            updatedAt: es.updated_at
+          })));
+        }
       } catch (error) {
         console.error("Error fetching data:", error);
       } finally {
@@ -183,7 +260,197 @@ export const EventProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     fetchInitialData();
   }, []);
 
-  // ================= EVENTS & SERVICES =================
+  // ================= MASTER SERVICES (SAFE OPTIMISTIC + DB SYNC) =================
+  const addMasterService = async (data: Omit<MasterService, 'id' | 'createdAt' | 'updatedAt' | 'totalInternalCost' | 'expectedMargin'>) => {
+    const newId = `srv-${Date.now()}`;
+    const totalInternalCost = Number(data.labourCost || 0) + Number(data.equipmentCost || 0) + Number(data.otherCost || 0);
+    const clientPrice = Number(data.defaultClientPrice || 0);
+    const expectedMargin = clientPrice > 0 ? ((clientPrice - totalInternalCost) / clientPrice) * 100 : 0;
+    const now = new Date().toISOString();
+
+    const newService: MasterService = {
+      ...data,
+      id: newId,
+      totalInternalCost,
+      expectedMargin,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    // 1. Optimistic Update (Immediate UI response)
+    setMasterServices(prev => [newService, ...prev]);
+
+    // 2. Database Sync
+    const mappedForDb = {
+      id: newId,
+      service_code: data.serviceCode,
+      service_name: data.serviceName,
+      description: data.description,
+      category: data.category,
+      service_type: data.serviceType,
+      status: data.status,
+      responsible_team: data.responsibleTeam,
+      team_lead: data.teamLead,
+      available_capacity: data.availableCapacity,
+      working_hours: data.workingHours,
+      required_staff: data.requiredStaff,
+      required_equipment: data.requiredEquipment,
+      service_location: data.serviceLocation,
+      vendor_id: data.vendorId || null,
+      labour_cost: data.labourCost,
+      equipment_cost: data.equipmentCost,
+      other_cost: data.otherCost,
+      default_client_price: data.defaultClientPrice,
+      created_at: now,
+      updated_at: now
+    };
+
+    await SupabaseSyncEngine.syncRecord('services', mappedForDb);
+    return newService;
+  };
+
+  const updateMasterService = async (id: string, updates: Partial<MasterService>) => {
+    const existing = masterServices.find(s => s.id === id);
+    if (!existing) return;
+
+    const merged = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+    const totalInternalCost = Number(merged.labourCost || 0) + Number(merged.equipmentCost || 0) + Number(merged.otherCost || 0);
+    const clientPrice = Number(merged.defaultClientPrice || 0);
+    const expectedMargin = clientPrice > 0 ? ((clientPrice - totalInternalCost) / clientPrice) * 100 : 0;
+
+    const updatedService: MasterService = {
+      ...merged,
+      totalInternalCost,
+      expectedMargin
+    };
+
+    // 1. Optimistic Local State Update
+    setMasterServices(prev => prev.map(s => s.id === id ? updatedService : s));
+
+    // 2. Database Sync
+    const mappedForDb: any = { id };
+    if (updates.serviceCode !== undefined) mappedForDb.service_code = updates.serviceCode;
+    if (updates.serviceName !== undefined) mappedForDb.service_name = updates.serviceName;
+    if (updates.description !== undefined) mappedForDb.description = updates.description;
+    if (updates.category !== undefined) mappedForDb.category = updates.category;
+    if (updates.serviceType !== undefined) mappedForDb.service_type = updates.serviceType;
+    if (updates.status !== undefined) mappedForDb.status = updates.status;
+    if (updates.responsibleTeam !== undefined) mappedForDb.responsible_team = updates.responsibleTeam;
+    if (updates.teamLead !== undefined) mappedForDb.team_lead = updates.teamLead;
+    if (updates.availableCapacity !== undefined) mappedForDb.available_capacity = updates.availableCapacity;
+    if (updates.workingHours !== undefined) mappedForDb.working_hours = updates.workingHours;
+    if (updates.requiredStaff !== undefined) mappedForDb.required_staff = updates.requiredStaff;
+    if (updates.requiredEquipment !== undefined) mappedForDb.required_equipment = updates.requiredEquipment;
+    if (updates.serviceLocation !== undefined) mappedForDb.service_location = updates.serviceLocation;
+    if (updates.vendorId !== undefined) mappedForDb.vendor_id = updates.vendorId || null;
+    if (updates.labourCost !== undefined) mappedForDb.labour_cost = updates.labourCost;
+    if (updates.equipmentCost !== undefined) mappedForDb.equipment_cost = updates.equipmentCost;
+    if (updates.otherCost !== undefined) mappedForDb.other_cost = updates.otherCost;
+    if (updates.defaultClientPrice !== undefined) mappedForDb.default_client_price = updates.defaultClientPrice;
+    mappedForDb.updated_at = updatedService.updatedAt;
+
+    await SupabaseSyncEngine.syncRecord('services', mappedForDb);
+  };
+
+  const deleteMasterService = async (id: string) => {
+    // Soft delete prefered: set status to INACTIVE if referenced, else remove
+    const hasAssignments = eventServiceRelations.some(r => r.serviceId === id);
+    if (hasAssignments) {
+      await updateMasterService(id, { status: 'INACTIVE' });
+      return;
+    }
+    setMasterServices(prev => prev.filter(s => s.id !== id));
+    await SupabaseSyncEngine.deleteRecord('services', id);
+  };
+
+  const toggleServiceStatus = async (id: string) => {
+    const s = masterServices.find(item => item.id === id);
+    if (!s) return;
+    const newStatus = s.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    await updateMasterService(id, { status: newStatus });
+  };
+
+  const duplicateMasterService = async (id: string) => {
+    const original = masterServices.find(s => s.id === id);
+    if (!original) return null;
+    const duplicateData: Omit<MasterService, 'id' | 'createdAt' | 'updatedAt' | 'totalInternalCost' | 'expectedMargin'> = {
+      ...original,
+      serviceCode: `${original.serviceCode}-COPY`,
+      serviceName: `${original.serviceName} (Copy)`,
+      status: 'ACTIVE'
+    };
+    return await addMasterService(duplicateData);
+  };
+
+  // ================= CAPACITY MANAGEMENT & EVENT SERVICES =================
+  const checkCapacityConflict = (serviceId: string, startDate: string, endDate: string, excludeEventId?: string) => {
+    const service = masterServices.find(s => s.id === serviceId);
+    if (!service || service.serviceType !== 'IN_HOUSE') {
+      return { hasConflict: false, currentUsage: 0, maxCapacity: 999 };
+    }
+
+    const start = new Date(startDate).getTime();
+    const end = new Date(endDate).getTime();
+
+    const overlappingRelations = eventServiceRelations.filter(rel => {
+      if (rel.serviceId !== serviceId) return false;
+      if (excludeEventId && rel.eventId === excludeEventId) return false;
+      if (rel.status === 'CANCELLED') return false;
+
+      const relStart = rel.startDate ? new Date(rel.startDate).getTime() : 0;
+      const relEnd = rel.endDate ? new Date(rel.endDate).getTime() : relStart;
+      return (start <= relEnd && end >= relStart);
+    });
+
+    const currentUsage = overlappingRelations.reduce((sum, r) => sum + (r.quantity || 1), 0);
+    const maxCapacity = service.availableCapacity || 1;
+    return {
+      hasConflict: currentUsage >= maxCapacity,
+      currentUsage,
+      maxCapacity
+    };
+  };
+
+  const assignServiceToEvent = async (relation: Omit<EventServiceRelation, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const newId = `es-${Date.now()}`;
+    const now = new Date().toISOString();
+    const fullRelation: EventServiceRelation = {
+      ...relation,
+      id: newId,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    setEventServiceRelations(prev => [fullRelation, ...prev]);
+
+    const mappedForDb = {
+      id: newId,
+      event_id: fullRelation.eventId,
+      service_id: fullRelation.serviceId,
+      quantity: fullRelation.quantity,
+      assigned_team: fullRelation.assignedTeam,
+      start_date: fullRelation.startDate,
+      end_date: fullRelation.endDate,
+      internal_cost: fullRelation.internalCost,
+      client_price: fullRelation.clientPrice,
+      actual_cost: fullRelation.actualCost,
+      actual_revenue: fullRelation.actualRevenue,
+      notes: fullRelation.notes,
+      status: fullRelation.status,
+      created_at: now,
+      updated_at: now
+    };
+
+    await SupabaseSyncEngine.syncRecord('event_services', mappedForDb);
+    return fullRelation;
+  };
+
+  const removeServiceFromEvent = async (relationId: string) => {
+    setEventServiceRelations(prev => prev.filter(r => r.id !== relationId));
+    await SupabaseSyncEngine.deleteRecord('event_services', relationId);
+  };
+
+  // ================= EVENTS & SERVICES (LEGACY ARRAY SYNC) =================
   const addEvent = async (data: Omit<EventItem, 'id' | 'createdAt'>) => {
     const newEvent: EventItem = { ...data, id: `evt-${Date.now()}`, createdAt: new Date().toISOString().split('T')[0], services: data.services || [] };
     const success = await SupabaseSyncEngine.syncEvent(newEvent);
@@ -305,16 +572,12 @@ export const EventProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return createdEvent;
   };
 
-  // ================= CATEGORIES (✅ FIXED MAPPING) =================
+  // ================= CATEGORIES =================
   const addCategory = async (data: Omit<EventCategoryItem, 'id' | 'createdAt'>) => {
     const newCat = { ...data, id: `cat-${Date.now()}`, createdAt: new Date().toISOString().split('T')[0] };
     const mappedForDb = {
-      id: newCat.id,
-      name: newCat.name,
-      description: newCat.description,
-      color: newCat.color,
-      icon: newCat.icon,
-      created_at: newCat.createdAt
+      id: newCat.id, name: newCat.name, description: newCat.description, color: newCat.color,
+      icon: newCat.icon, created_at: newCat.createdAt
     };
     const success = await SupabaseSyncEngine.syncRecord('categories', mappedForDb);
     if (success) setCategories(prev => [...prev, newCat as EventCategoryItem]);
@@ -326,12 +589,8 @@ export const EventProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!target) return;
     const updated = { ...target, ...updates };
     const mappedForDb = {
-      id: updated.id,
-      name: updated.name,
-      description: updated.description,
-      color: updated.color,
-      icon: updated.icon,
-      created_at: updated.createdAt
+      id: updated.id, name: updated.name, description: updated.description, color: updated.color,
+      icon: updated.icon, created_at: updated.createdAt
     };
     const success = await SupabaseSyncEngine.syncRecord('categories', mappedForDb);
     if (success) setCategories(prev => prev.map(c => c.id === id ? updated : c));
@@ -436,7 +695,7 @@ export const EventProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  // ================= TASKS (KANBAN & GANTT) =================
+  // ================= TASKS =================
   const addKanbanTask = async (task: Omit<KanbanTask, 'id'>) => {
     const newTask = { ...task, id: `task-${Date.now()}` };
     const mapped = {
@@ -512,11 +771,20 @@ export const EventProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   let totalEstimatedCost = 0;
   let totalActualCost = 0;
+
+  // Combine legacy event services
   events.forEach(evt => {
     (evt.services || []).forEach(srv => {
       totalEstimatedCost += srv.estimatedCost || 0;
       totalActualCost += srv.actualCost || srv.estimatedCost || 0;
     });
+  });
+
+  // Factor in new event service relations (avoiding double counting)
+  eventServiceRelations.forEach(rel => {
+    const cost = (rel.actualCost || rel.internalCost || 0) * (rel.quantity || 1);
+    totalActualCost += cost;
+    totalEstimatedCost += (rel.internalCost || 0) * (rel.quantity || 1);
   });
 
   const totalVendorPaid = vendorBills.reduce((sum, b) => sum + (b.amountPaid || 0), 0);
@@ -534,13 +802,16 @@ export const EventProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <EventContext.Provider value={{
       events, categories, vendors, leads, clientInvoices, vendorBills, kanbanTasks, ganttTasks,
+      masterServices, eventServiceRelations,
       companyProfile, isLoading, updateCompanyProfile, addEvent, updateEvent, deleteEvent,
       addServiceToEvent, updateServiceInEvent, deleteServiceFromEvent, addCategory, updateCategory,
       deleteCategory, addVendor, updateVendor, deleteVendor, addLead, updateLead, deleteLead,
       convertLeadToEvent, addClientInvoice, updateClientInvoice, deleteClientInvoice, recordClientPayment,
       addVendorBill, updateVendorBill, deleteVendorBill, recordVendorPayment, addKanbanTask,
       updateKanbanTask, deleteKanbanTask, moveKanbanTask, addGanttTask, updateGanttTask,
-      deleteGanttTask, financialSummary
+      deleteGanttTask, addMasterService, updateMasterService, deleteMasterService,
+      toggleServiceStatus, duplicateMasterService, assignServiceToEvent, removeServiceFromEvent, checkCapacityConflict,
+      financialSummary
     }}>
       {children}
     </EventContext.Provider>

@@ -11,6 +11,7 @@ import { DashboardView } from './components/DashboardView';
 import { EventsView } from './components/EventsView';
 import { LeadsView } from './components/LeadsView';
 import { VendorsView } from './components/VendorsView';
+import { ServicesView } from './components/ServicesView';
 import { BillingView } from './components/BillingView';
 import { KanbanView } from './components/KanbanView';
 import { CategoriesView } from './components/CategoriesView';
@@ -22,7 +23,7 @@ import { InvoicePrintModal } from './components/InvoicePrintModal';
 
 const CyberEventsApp: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();
-  const { resetToDemoData, clientInvoices } = useEventContext();
+  const { clientInvoices } = useEventContext();
 
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -33,7 +34,6 @@ const CyberEventsApp: React.FC = () => {
   const [eventToEdit, setEventToEdit] = useState<EventItem | null>(null);
   const [printInvoiceId, setPrintInvoiceId] = useState<string | null>(null);
 
-  // Authentication Guard: if not authenticated, show the Login Page
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-cyan-400 font-mono text-sm">
@@ -49,29 +49,21 @@ const CyberEventsApp: React.FC = () => {
     return <LoginPage />;
   }
 
-  const handleSelectEvent = (eventId: string) => {
-    setSelectedEventId(eventId);
-  };
-
+  const handleSelectEvent = (eventId: string) => setSelectedEventId(eventId);
   const handleEditEvent = (event: EventItem) => {
     setSelectedEventId(null);
     setEventToEdit(event);
     setIsCreateEventOpen(true);
   };
-
-  const handleOpenNewLead = () => {
-    setCurrentTab('leads');
-  };
-
+  const handleOpenNewLead = () => setCurrentTab('leads');
   const handleResetDemoData = () => {
-    if (window.confirm('Reset all demo data (events, partners, invoices, tasks) to initial pristine state?')) {
-      resetToDemoData();
+    if (window.confirm('Reset all demo data to initial pristine state?')) {
+      window.location.reload();
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex transition-colors duration-200 antialiased selection:bg-cyan-500 selection:text-white">
-      {/* Desktop & Mobile Drawer Sidebar */}
       <Sidebar
         currentTab={currentTab}
         onSelectTab={(tab) => {
@@ -88,9 +80,7 @@ const CyberEventsApp: React.FC = () => {
         onCloseMobile={() => setIsMobileMenuOpen(false)}
       />
 
-      {/* Main App Container */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
-        {/* Sticky Top Header */}
         <TopNav
           currentTab={currentTab}
           onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
@@ -102,71 +92,40 @@ const CyberEventsApp: React.FC = () => {
           onResetDemo={handleResetDemoData}
         />
 
-        {/* Viewport Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
           {currentTab === 'dashboard' && (
-            <DashboardView
-              onNavigate={setCurrentTab}
-              onSelectEvent={handleSelectEvent}
-            />
+            <DashboardView onNavigate={setCurrentTab} onSelectEvent={handleSelectEvent} />
           )}
-
           {currentTab === 'events' && (
-            <EventsView
-              onSelectEvent={handleSelectEvent}
-              onOpenCreateEvent={() => {
-                setEventToEdit(null);
-                setIsCreateEventOpen(true);
-              }}
-              onOpenEditEvent={handleEditEvent}
-            />
+            <EventsView onSelectEvent={handleSelectEvent} onOpenCreateEvent={() => { setEventToEdit(null); setIsCreateEventOpen(true); }} onOpenEditEvent={handleEditEvent} />
           )}
-
           {currentTab === 'leads' && (
-            <LeadsView
-              onLeadConverted={(newEventId) => {
-                setSelectedEventId(newEventId);
-              }}
-            />
+            <LeadsView onLeadConverted={(newEventId) => setSelectedEventId(newEventId)} />
           )}
-
           {currentTab === 'vendors' && (
             <VendorsView />
           )}
-
-          {currentTab === 'billing' && (
-            <BillingView
-              onOpenPrintInvoice={(invoiceId) => {
-                setPrintInvoiceId(invoiceId);
-              }}
-            />
+          {currentTab === 'services' && (
+            <ServicesView />
           )}
-
+          {currentTab === 'billing' && (
+            <BillingView onOpenPrintInvoice={(invoiceId) => setPrintInvoiceId(invoiceId)} />
+          )}
           {currentTab === 'kanban' && (
             <KanbanView />
           )}
-
           {currentTab === 'categories' && (
             <CategoriesView />
           )}
-
           {currentTab === 'gantt' && (
             <GanttView />
           )}
-
           {currentTab === 'settings' && (
-            <SettingsView 
-              onPreviewSampleBill={() => {
-                if (clientInvoices.length > 0) {
-                  setPrintInvoiceId(clientInvoices[0].id);
-                }
-              }}
-            />
+            <SettingsView onPreviewSampleBill={() => { if (clientInvoices.length > 0) setPrintInvoiceId(clientInvoices[0].id); }} />
           )}
         </main>
       </div>
 
-      {/* Global Modals */}
       <EventModal
         isOpen={isCreateEventOpen}
         onClose={() => {

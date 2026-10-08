@@ -194,16 +194,79 @@ export interface GanttTask {
   linkedServiceId?: string;
 }
 
+// NAVIGATION MATRIX (With 'services')
 export type NavigationTab = 
   | 'dashboard' 
   | 'events' 
   | 'leads' 
   | 'categories'
   | 'vendors' 
+  | 'services'
   | 'billing' 
   | 'kanban' 
   | 'gantt'
   | 'settings';
+
+// ================= NEW SERVICES MODULE TYPES =================
+export type MasterServiceType = 'IN_HOUSE' | 'VENDOR';
+export type MasterServiceStatus = 'ACTIVE' | 'INACTIVE';
+
+export interface MasterService {
+  id: string;
+  serviceCode: string;
+  serviceName: string;
+  description?: string;
+  category?: string;
+  serviceType: MasterServiceType;
+  status: MasterServiceStatus;
+  
+  // In-House Operational Fields
+  responsibleTeam?: string;
+  teamLead?: string;
+  teamMembers?: string[];
+  availableCapacity: number;
+  workingHours?: string;
+  requiredStaff: number;
+  requiredEquipment?: string;
+  serviceLocation?: string;
+  
+  // Vendor Partner Link
+  vendorId?: string;
+  vendorName?: string;
+
+  // Financial & Cost Structure
+  labourCost: number;
+  equipmentCost: number;
+  otherCost: number;
+  totalInternalCost: number;
+  defaultClientPrice: number;
+  expectedMargin: number;
+
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
+}
+
+export interface EventServiceRelation {
+  id: string;
+  eventId: string;
+  eventTitle?: string;
+  serviceId: string;
+  serviceName: string;
+  serviceType: MasterServiceType;
+  quantity: number;
+  assignedTeam?: string;
+  startDate?: string;
+  endDate?: string;
+  internalCost: number; // Snapshotted internal cost
+  clientPrice: number;  // Snapshotted agreed client price
+  actualCost: number;
+  actualRevenue: number;
+  notes?: string;
+  status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface CompanyProfile {
   companyName: string;
@@ -272,7 +335,7 @@ export interface CurrencyConfig {
   code: CurrencyCode;
   name: string;
   symbol: string;
-  rate: number; // 1 USD = rate * Currency
+  rate: number;
   flag: string;
   locale: string;
   region?: string;
